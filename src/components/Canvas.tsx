@@ -47,14 +47,22 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         this.onAdd = this.onAdd.bind(this);
         this.onRemove = this.onRemove.bind(this);
         this.drawCursor = this.drawCursor.bind(this);
-        this.onMouseMove = this.onRemove.bind(this);
+        this.onMouseMove = this.onMouseMove.bind(this);
+        this.onMouseDown = this.onMouseDown.bind(this);
+    }
+
+    public onStageContextMenu(evt: React.MouseEvent<HTMLDivElement>) {
+        if (evt.stopPropagation) {
+            evt.stopPropagation();
+        } 
+        return false;
     }
 
     public onRemove(e: IMouseEvent) {
         const pixel = this.getPixel(this.getMouseCoords(e));
         if (pixel) {
             // Update our state
-            this.setState({...this.state, pixels: this.removePixel(pixel, this.state.pixels)});
+            this.setState({...this.state, pixels: this.removePixel(pixel, this.state.pixels), hoverPixel: undefined});
         }
 
     }
@@ -63,7 +71,7 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         const pixel = this.getPixel(this.getMouseCoords(e));
         if (pixel) {
             // Update our state
-            this.setState({...this.state, pixels: this.addPixel(pixel, this.state.pixels)});
+            this.setState({...this.state, pixels: this.addPixel(pixel, this.state.pixels), hoverPixel: undefined});
         }
     }
 
@@ -75,10 +83,27 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         }
     }
 
+    public onMouseDown(e: IMouseEvent) {
+        if (e.evt.buttons === 1) {
+            this.onAdd(e);
+        } 
+        else if (e.evt.buttons === 2) {
+            this.onRemove(e);
+        }
+    }
+
     public onMouseMove(e: IMouseEvent){
         if (e.evt.buttons === 0) {
             // This means the mouse is not down, so show the hover value
             this.drawCursor(e);
+        }
+        else if (e.evt.buttons === 1) {
+            // Left click
+            this.onAdd(e);
+        }
+        else if (e.evt.buttons === 2) {
+            // Right click
+            this.onRemove(e);
         }
     }
 
@@ -97,8 +122,11 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         return (
             // Create layout so we can center
             <div className="layout">
-                <div className="stage-container" id="stage-container" ref={this.stageContainer}>
-                    <Stage width={actualWidth} height={actualWidth}>
+                <div className="stage-container" id="stage-container" ref={this.stageContainer} onContextMenu={this.onStageContextMenu}>
+                    <Stage width={actualWidth} height={actualWidth}
+                           onMouseDown={this.onMouseDown}
+                           onMouseUp={this.drawCursor}
+                           onMouseMove={this.onMouseMove}>
                         <Layer>
                             {/* Create a special canvas rect that draws our background */}
                             <Rect
@@ -107,8 +135,7 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
                                 width={actualWidth}
                                 height={actualWidth}
                                 fill={this.props.backgroundColor}
-                                onMouseOver={this.drawCursor}
-                                onMouseMove={this.onMouseMove} />
+                            />
                         </Layer>
                         <Layer>
                             {this.renderPixels()}
