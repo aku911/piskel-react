@@ -55,6 +55,9 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         if (evt.stopPropagation) {
             evt.stopPropagation();
         } 
+        if (evt.preventDefault) {
+            evt.preventDefault();
+        }
         return false;
     }
 
