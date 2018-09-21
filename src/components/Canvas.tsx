@@ -1,17 +1,24 @@
 import * as React from 'react';
 import { Layer, Rect, Stage } from 'react-konva';
-import { Point } from '../Helpers/Point'
 import './Canvas.css';
 
 interface ICanvasProps {
     backgroundColor: string;
+    hoverColor: string;
     width: number;
     height: number;
 }
 
+interface IPixel {
+    x: number;
+    y: number;
+    color: string | undefined;
+}
+
 interface ICanvasState {
     penColor: string;
-    points: Point[];
+    pixels: IPixel[];
+    hoverPixel: IPixel | undefined;
     windowWidth: number;
     windowHeight: number;
 }
@@ -33,38 +40,45 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
 
     constructor(props: ICanvasProps, state: ICanvasState) {
         super(props);
-        this.state = { windowHeight: 100, windowWidth: 100, penColor: "black", points: [] };
+        this.state = { windowHeight: 100, windowWidth: 100, penColor: "black", pixels: [], hoverPixel: undefined };
         this.stageContainer = React.createRef();
         const actualWidth = props.width * Canvas.RECT_SIZE;
         this.clientRect = { top: 0, left: 0, right: actualWidth, bottom: actualWidth, height: actualWidth, width: actualWidth };
         this.onAdd = this.onAdd.bind(this);
         this.onRemove = this.onRemove.bind(this);
+        this.drawCursor = this.drawCursor.bind(this);
+        this.onMouseMove = this.onRemove.bind(this);
     }
 
     public onRemove(e: IMouseEvent) {
-        const x = e.target.attrs.x;
-        const y = e.target.attrs.y;
-        if (x && y) {
-            const pointX = Math.floor(x / Canvas.RECT_SIZE);
-            const pointY = Math.floor(y / Canvas.RECT_SIZE);
-
+        const pixel = this.getPixel(this.getMouseCoords(e));
+        if (pixel) {
             // Update our state
-            this.setState({...this.state, points: this.removePoint({x: pointX, y: pointY}, this.state.points)});
+            this.setState({...this.state, pixels: this.removePixel(pixel, this.state.pixels)});
         }
 
     }
 
     public onAdd(e: IMouseEvent) {
-        // Update our state and add/remove a point
-        const x = e.evt.offsetX;
-        const y = e.evt.offsetY;
-        if (x >= 0 && x <= this.clientRect.right && y >= 0 && y <= this.clientRect.bottom) {
-            // Compute point location based on x/y
-            const pointX = Math.floor(x / Canvas.RECT_SIZE);
-            const pointY = Math.floor(y / Canvas.RECT_SIZE);
-
+        const pixel = this.getPixel(this.getMouseCoords(e));
+        if (pixel) {
             // Update our state
-            this.setState({...this.state, points: this.addPoint({x: pointX, y: pointY}, this.state.points)});
+            this.setState({...this.state, pixels: this.addPixel(pixel, this.state.pixels)});
+        }
+    }
+
+    public drawCursor(e: IMouseEvent){
+        const pixel = this.getPixel(this.getMouseCoords(e), this.props.hoverColor);
+        if (pixel) {
+            // Set the hover pixel
+            this.setState({...this.state, hoverPixel: pixel});
+        }
+    }
+
+    public onMouseMove(e: IMouseEvent){
+        if (e.evt.buttons === 0) {
+            // This means the mouse is not down, so show the hover value
+            this.drawCursor(e);
         }
     }
 
@@ -93,10 +107,11 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
                                 width={actualWidth}
                                 height={actualWidth}
                                 fill={this.props.backgroundColor}
-                                onClick={this.onAdd} />
+                                onMouseOver={this.drawCursor}
+                                onMouseMove={this.onMouseMove} />
                         </Layer>
                         <Layer>
-                            {this.renderPoints()}
+                            {this.renderPixels()}
                         </Layer>
                     </Stage>
                 </div>
@@ -104,19 +119,18 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         )
     }
 
-    private renderPoints = () => {
+    private renderPixels = () => {
         const result: any[] = [];
-        if (this.state && this.state.points) {
-            for (const key in this.state.points) {
-                if (key && this.state.points[key]) {
-                    const point = this.state.points[key];
-                    // window.console.log(point);
+        if (this.state && this.state.pixels) {
+            for (const key in this.state.pixels) {
+                if (key && this.state.pixels[key]) {
+                    const pixel = this.state.pixels[key];
+                    // window.console.log(pixel);
                     result.push(
                         <Rect 
                             key={result.length} 
-                            x={point.x * Canvas.RECT_SIZE} 
-                            y={point.y * Canvas.RECT_SIZE} 
-                            onClick={this.onRemove}
+                            x={pixel.x * Canvas.RECT_SIZE} 
+                            y={pixel.y * Canvas.RECT_SIZE} 
                             width={Canvas.RECT_SIZE} 
                             height={Canvas.RECT_SIZE} 
                             fill={this.state.penColor} />
@@ -124,28 +138,47 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
                 }
             };
         }
+        if (this.state && this.state.hoverPixel && this.state.hoverPixel.color) {
+            result.push(
+                <Rect 
+                    key={result.length} 
+                    x={this.state.hoverPixel.x * Canvas.RECT_SIZE} 
+                    y={this.state.hoverPixel.y * Canvas.RECT_SIZE} 
+                    width={Canvas.RECT_SIZE} 
+                    height={Canvas.RECT_SIZE} 
+                    fill={this.state.hoverPixel.color} />
+            )
+        }
         return result;
     }
 
-    private copyPoints(points: Point[]) {
-        return Object.assign({}, points);
+    private getPixel(coords: { x: number, y: number } | undefined, pixelColor?: string) {
+        if (coords) {
+            return { x: Math.floor(coords.x / Canvas.RECT_SIZE), y: Math.floor(coords.y / Canvas.RECT_SIZE), color:pixelColor }
+        }
+
+        return undefined;
     }
 
-    private getPointKey(p: Point) {
+    private copyPixels(pixels: IPixel[]) {
+        return Object.assign({}, pixels);
+    }
+
+    private getPixelKey(p: IPixel) {
         return p.x.toString() + ":" + p.y.toString();
     }
 
-    private removePoint(point: Point, points: Point[]) {
-        const key = this.getPointKey(point);
-        const copy = this.copyPoints(points);
+    private removePixel(pixel: IPixel, pixels: IPixel[]) {
+        const key = this.getPixelKey(pixel);
+        const copy = this.copyPixels(pixels);
         delete copy[key];
         return copy;
     }
 
-    private addPoint(point: Point, points: Point[]) {
-        const key = this.getPointKey(point);
-        const copy = this.copyPoints(points);
-        copy[key] = point;
+    private addPixel(pixel: IPixel, pixels: IPixel[]) {
+        const key = this.getPixelKey(pixel);
+        const copy = this.copyPixels(pixels);
+        copy[key] = pixel;
         return copy;
     } 
 
@@ -154,6 +187,16 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
             const boundingRect = this.stageContainer.current.getBoundingClientRect();
             this.setState({ ...this.state, windowWidth: boundingRect.width, windowHeight: boundingRect.height });
         }
+    }
+
+    private getMouseCoords(e: IMouseEvent) {
+        const locx = e.evt.offsetX;
+        const locy = e.evt.offsetY;
+        if (locx >= 0 && locx <= this.clientRect.right && locy >= 0 && locy <= this.clientRect.bottom) {
+            return {x: locx, y: locy};
+        }      
+        
+        return undefined;
     }
 }
 
