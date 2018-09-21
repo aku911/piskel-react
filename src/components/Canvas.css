@@ -1,0 +1,12 @@
+.stage-container {
+  margin:0px;
+  padding:0px;
+    display:inline-block;
+    vertical-align: center;
+  }
+
+.layout {
+    margin: 100px;
+    padding: 10px;
+    text-align: center;
+}
