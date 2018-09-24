@@ -35,6 +35,7 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
     // Should later be able to modulate this based on zoom
     private static readonly RECT_SIZE = 10;
     private clientRect: ClientRect;
+    private lastDrawPosition: {x: number, y: number} | undefined;
 
     private stageContainer: React.RefObject<HTMLDivElement>;
 
@@ -49,6 +50,7 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         this.drawCursor = this.drawCursor.bind(this);
         this.onMouseMove = this.onMouseMove.bind(this);
         this.onMouseDown = this.onMouseDown.bind(this);
+        this.onMouseUp = this.onMouseUp.bind(this);
     }
 
     public onStageContextMenu(evt: React.MouseEvent<HTMLDivElement>) {
@@ -86,12 +88,14 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
         }
     }
 
+    public onMouseUp(e: IMouseEvent) {
+        this.lastDrawPosition = undefined;
+        this.drawCursor(e);
+    }
+
     public onMouseDown(e: IMouseEvent) {
-        if (e.evt.buttons === 1) {
-            this.onAdd(e);
-        } 
-        else if (e.evt.buttons === 2) {
-            this.onRemove(e);
+        if (e.evt.buttons === 1 || e.evt.buttons === 2) {
+            this.onDrawableEvent(e);
         }
     }
 
@@ -100,13 +104,8 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
             // This means the mouse is not down, so show the hover value
             this.drawCursor(e);
         }
-        else if (e.evt.buttons === 1) {
-            // Left click
-            this.onAdd(e);
-        }
-        else if (e.evt.buttons === 2) {
-            // Right click
-            this.onRemove(e);
+        else if (e.evt.buttons === 1 || e.evt.buttons === 2) {
+            this.onDrawableEvent(e);
         }
     }
 
@@ -128,7 +127,7 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
                 <div className="stage-container" id="stage-container" ref={this.stageContainer} onContextMenu={this.onStageContextMenu}>
                     <Stage width={actualWidth} height={actualWidth}
                            onMouseDown={this.onMouseDown}
-                           onMouseUp={this.drawCursor}
+                           onMouseUp={this.onMouseUp}
                            onMouseMove={this.onMouseMove}>
                         <Layer>
                             {/* Create a special canvas rect that draws our background */}
@@ -180,6 +179,80 @@ class Canvas extends React.Component<ICanvasProps, ICanvasState> {
             )
         }
         return result;
+    }
+
+    private getAddOrRemoveFunc(e: IMouseEvent) {
+        if (e.evt.buttons === 1) {
+            return this.onAdd;
+        }
+        if (e.evt.buttons === 2) {
+            return this.onRemove;
+        }
+        return undefined;
+    }
+
+    private applyLine(startPoint: IPixel, endPoint: IPixel, pixels: IPixel[], addOrRemove: boolean) {
+        const modifyList = (key: string, p: IPixel, list: IPixel[]) => { addOrRemove ? list[key] = p : delete list[key]; };
+        const copy = this.copyPixels(pixels);
+
+        // Implement Bresenham's algorithm for mapping all the coords between two points
+        let x1 = startPoint.x;
+        const x2 = endPoint.x;
+        let y1 = startPoint.y;
+        const y2 = endPoint.y;
+        const dx = Math.abs(endPoint.x - startPoint.x);
+        const dy = Math.abs(endPoint.y - startPoint.y);
+        const sx = (startPoint.x < endPoint.x) ? 1 : -1;
+        const sy = (startPoint.y < endPoint.y) ? 1 : -1;
+        let err = dx - dy;
+
+        // Loop until we match x and y 
+        while (x1 !== x2 || y1 !== y2) {
+            
+            const e2 = 2 * err;
+
+            if (e2 > -dy) {
+                err -= dy;
+                x1 += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y1 += sy;
+            }
+
+            // Generate a new pixel and add/remove it from the list
+            const pixel = {x: x1, y:y1, color: endPoint.color};
+            const key = this.getPixelKey(pixel);
+            modifyList(key, pixel, copy);
+        }
+
+        return copy;
+    }
+
+    private onDrawableEvent(e: IMouseEvent) {
+        if (e.evt.buttons !== 0) {
+            // Compute number of points (might be more than one if last mouse move is more than one away)
+            const endPoint = this.getPixel(this.getMouseCoords(e));
+            if (this.lastDrawPosition && endPoint &&
+                (Math.abs(this.lastDrawPosition.x - endPoint.x) > 1 || Math.abs(this.lastDrawPosition.y - endPoint.y) > 1)) {
+                const startPoint = {...this.lastDrawPosition, color: undefined };
+
+                // Generate a line of points and apply to our state
+                this.setState({...this.state, pixels: this.applyLine(startPoint, endPoint, this.state.pixels, e.evt.buttons === 1), hoverPixel: undefined});
+            }
+            else if (endPoint) {
+                // We have just an end point. Just draw this
+                const drawFunc = this.getAddOrRemoveFunc(e);
+                if (drawFunc) {
+                    drawFunc(e);
+                }
+            }
+
+            // Save our last draw position in case another mouse move occurs
+            if (endPoint) {
+                this.lastDrawPosition = {x: endPoint.x, y: endPoint.y};
+            }
+        }
     }
 
     private getPixel(coords: { x: number, y: number } | undefined, pixelColor?: string) {
